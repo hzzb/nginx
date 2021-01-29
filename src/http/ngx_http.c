@@ -128,6 +128,9 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_core_srv_conf_t   **cscfp;
     ngx_http_core_main_conf_t   *cmcf;
 
+    // Directive has context type of NGX_MAIN_CONF.
+    // The slot is empty, it's addrss is passed in.
+    // We alloc ngx_http_conf_ctx_t structure and refill
     if (*(ngx_http_conf_ctx_t **) conf) {
         return "is duplicate";
     }
@@ -141,6 +144,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     *(ngx_http_conf_ctx_t **) conf = ctx;
 
+    // Every NGX_HTTP_MODULE has one independent slot for each main_conf/srv_conf/loc_conf
 
     /* count the number of the http modules and set up their indices */
 
@@ -183,6 +187,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
      * of the all http modules
      */
 
+    // Ask each NGX_HTTP_MODULE to create their own data store
     for (m = 0; cf->cycle->modules[m]; m++) {
         if (cf->cycle->modules[m]->type != NGX_HTTP_MODULE) {
             continue;
@@ -213,9 +218,11 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
     }
 
+    // Backup *cf. ctx goes one deeper level.
     pcf = *cf;
     cf->ctx = ctx;
 
+    // Run all NGX_HTTP_MODULE module's preconfiguration
     for (m = 0; cf->cycle->modules[m]; m++) {
         if (cf->cycle->modules[m]->type != NGX_HTTP_MODULE) {
             continue;
@@ -232,6 +239,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     /* parse inside the http{} block */
 
+    // Parse NGX_HTTP_MAIN_CONF conf
     cf->module_type = NGX_HTTP_MODULE;
     cf->cmd_type = NGX_HTTP_MAIN_CONF;
     rv = ngx_conf_parse(cf, NULL);

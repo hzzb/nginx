@@ -361,6 +361,7 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
     ngx_str_t      *name;
     ngx_command_t  *cmd;
 
+    // Current directive
     name = cf->args->elts;
 
     found = 0;
@@ -373,14 +374,14 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
             continue;
         }
 
-        // Search module directive table, which always has ngx_null_command at last slot as a sentinal.
+        // Search module directive table, which always place ngx_null_command at last slot as a sentinal.
         for ( /* void */ ; cmd->name.len; cmd++) {
 
             if (name->len != cmd->name.len) {
                 continue;
             }
 
-            if (ngx_strcmp(name->data, cmd->name.data) != 0) {
+            if (ngx_strcmp(name->data, cmd->name.data) != 0) { // Directive name matched?
                 continue;
             }
 
@@ -389,6 +390,7 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
             if (cf->cycle->modules[i]->type != NGX_CONF_MODULE
                 && cf->cycle->modules[i]->type != cf->module_type)
             {
+                // We only care about modules of type cf->module_type.
                 continue;
             }
 
@@ -449,20 +451,29 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
             conf = NULL;
 
             if (cmd->type & NGX_DIRECT_CONF) {
+                // Value of slot will be passed into command's set function.
+                // Some NGX_CORE_MODULE modules go here, the slot is filled by their ngx_core_module_t.create_conf function
                 conf = ((void **) cf->ctx)[cf->cycle->modules[i]->index];
 
             } else if (cmd->type & NGX_MAIN_CONF) {
+                // Slot is empty, address of it is passed into command's set function which will refill the slot.
+                // http{} directive in ngx_http_module is one example of this.
                 conf = &(((void **) cf->ctx)[cf->cycle->modules[i]->index]);
 
             } else if (cf->ctx) {
+                // Most complicated case.
+
+                // cmd->conf specify which configuration structure to apply
+                // For example, NGX_HTTP_MODULE has 3 choice: main/server/location
                 confp = *(void **) ((char *) cf->ctx + cmd->conf);
 
                 if (confp) {
+                    // module independent slot value
                     conf = confp[cf->cycle->modules[i]->ctx_index];
                 }
             }
 
-            rv = cmd->set(cf, cmd, conf);
+            rv = cmd->set(cf, cmd, conf); // invoke command's set function
 
             if (rv == NGX_CONF_OK) {
                 return NGX_OK;

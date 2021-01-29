@@ -263,7 +263,7 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
         return NULL;
     }
 
-    // conf is temporary and local.
+    // conf is temporary and local, play an parser role like in compiler.
     // It will be passed as the first parameter of all ngx_command_t.set function to help corresponding directives take effect.
     conf.ctx = cycle->conf_ctx;
     conf.cycle = cycle;
