@@ -1084,7 +1084,7 @@ ngx_core_module_create_conf(ngx_cycle_t *cycle)
 
 
 static char *
-ngx_core_module_init_conf(ngx_cycle_t *cycle, void *conf)
+ngx_core_module_init_conf(ngx_cycle_t *cycle, void *conf) // 2nd parameter is exactly what returned by ngx_core_module_create_conf above.
 {
     ngx_core_conf_t  *ccf = conf;
 
