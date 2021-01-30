@@ -2801,6 +2801,8 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     ngx_http_core_srv_conf_t    *cscf, **cscfp;
     ngx_http_core_main_conf_t   *cmcf;
 
+     // temporary local ngx_http_conf_ctx_t
+
     ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_conf_ctx_t));
     if (ctx == NULL) {
         return NGX_CONF_ERROR;
@@ -2852,6 +2854,7 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 
     /* the server configuration context */
 
+    // Every server{} directive alloc a new ngx_http_core_srv_conf_t and append to ngx_http_core_main_conf_t.servers
     cscf = ctx->srv_conf[ngx_http_core_module.ctx_index];
     cscf->ctx = ctx;
 
@@ -2974,6 +2977,8 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 
     clcf = ctx->loc_conf[ngx_http_core_module.ctx_index];
     clcf->loc_conf = ctx->loc_conf;
+
+    // Now, we get a temporary local ngx_http_conf_ctx_t structure with new loc_conf array refilled.
 
     value = cf->args->elts;
 
@@ -3107,6 +3112,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
         }
     }
 
+    // Save newly alloc ngx_http_core_loc_conf_t.
     if (ngx_http_add_location(cf, &pclcf->locations, clcf) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
