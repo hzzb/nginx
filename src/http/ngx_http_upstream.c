@@ -5753,6 +5753,7 @@ ngx_http_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     u.no_resolve = 1;
     u.no_port = 1;
 
+    // After this call, a new ngx_http_upstream_srv_conf_t is created and  placed in ngx_http_upstream_main_conf_t.
     uscf = ngx_http_upstream_add(cf, &u, NGX_HTTP_UPSTREAM_CREATE
                                          |NGX_HTTP_UPSTREAM_WEIGHT
                                          |NGX_HTTP_UPSTREAM_MAX_CONNS
@@ -5764,6 +5765,9 @@ ngx_http_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
         return NGX_CONF_ERROR;
     }
 
+    // ngx_http_upstream_module doesn't need ngx_http_upstream_srv_conf_t in ngx_http_conf_ctx_t.
+    // So we create a temporay ngx_http_conf_ctx_t filled with uscf.
+    // We restore cf->ctx on return when inside of upstream{} block pasred.
 
     ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_conf_ctx_t));
     if (ctx == NULL) {
@@ -5799,6 +5803,9 @@ ngx_http_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 
         module = cf->cycle->modules[m]->ctx;
 
+        // ngx_http_upstream_module has no create_srv_conf function.
+        // Don't worry about recreate ngx_http_upstream_srv_conf_t structure.
+        // But other NGX_HTTP_MODULE modules will.
         if (module->create_srv_conf) {
             mconf = module->create_srv_conf(cf);
             if (mconf == NULL) {

@@ -196,6 +196,10 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         module = cf->cycle->modules[m]->ctx;
         mi = cf->cycle->modules[m]->ctx_index;
 
+        // ngx_http_core_module:     ngx_http_core_main_conf_t
+        // ngx_http_log_module:      ngx_http_log_main_conf_t
+        // ngx_http_upstream_module: ngx_http_upstream_main_conf_t
+        // ngx_http_proxy_module:    ngx_http_proxy_main_conf_t
         if (module->create_main_conf) {
             ctx->main_conf[mi] = module->create_main_conf(cf);
             if (ctx->main_conf[mi] == NULL) {
@@ -203,6 +207,8 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             }
         }
 
+        // ngx_http_core_module:               ngx_http_core_srv_conf_t
+        // ngx_http_upstream_keepalive_module: ngx_http_upstream_keepalive_srv_conf_t
         if (module->create_srv_conf) {
             ctx->srv_conf[mi] = module->create_srv_conf(cf);
             if (ctx->srv_conf[mi] == NULL) {
@@ -210,6 +216,9 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             }
         }
 
+        // ngx_http_core_module:     ngx_http_core_loc_conf_t
+        // ngx_http_log_module:      ngx_http_log_loc_conf_t
+        // ngx_http_proxy_module:    ngx_http_proxy_loc_conf_t
         if (module->create_loc_conf) {
             ctx->loc_conf[mi] = module->create_loc_conf(cf);
             if (ctx->loc_conf[mi] == NULL) {
