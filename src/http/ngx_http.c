@@ -1,4 +1,3 @@
-
 /*
  * Copyright (C) Igor Sysoev
  * Copyright (C) Nginx, Inc.
@@ -275,6 +274,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         /* init http{} main_conf's */
 
+        // Call each NGX_HTTP_MODULE module to init_main_conf, which usually init unset defaults
         if (module->init_main_conf) {
             rv = module->init_main_conf(cf, ctx->main_conf[mi]);
             if (rv != NGX_CONF_OK) {
@@ -282,6 +282,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             }
         }
 
+        // Merge servers and locations
         rv = ngx_http_merge_servers(cf, cmcf, module, mi);
         if (rv != NGX_CONF_OK) {
             goto failed;
@@ -304,7 +305,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
     }
 
-
+    // Init cmcf->phases[*].handlerss as one element array
     if (ngx_http_init_phases(cf, cmcf) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
@@ -313,7 +314,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-
+    // Ask all NGX_HTTP_MODULE module to run post configuration
     for (m = 0; cf->cycle->modules[m]; m++) {
         if (cf->cycle->modules[m]->type != NGX_HTTP_MODULE) {
             continue;
@@ -481,6 +482,10 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
     use_rewrite = cmcf->phases[NGX_HTTP_REWRITE_PHASE].handlers.nelts ? 1 : 0;
     use_access = cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers.nelts ? 1 : 0;
 
+
+    // A request will be processed by a sequence of ngx_http_handler_pt functions, which usually be injected by NGX_HTTP_MODULE modules at postconfiguration.
+    // We group these functions into 11 phases. some group allows only one function, and some group allows multiple function.
+
     n = 1                  /* find config phase */
         + use_rewrite      /* post rewrite phase */
         + use_access;      /* post access phase */
@@ -489,8 +494,9 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
         n += cmcf->phases[i].handlers.nelts;
     }
 
+    // Explore the two layer structure into single dimension array.
     ph = ngx_pcalloc(cf->pool,
-                     n * sizeof(ngx_http_phase_handler_t) + sizeof(void *));
+                     n * sizeof(ngx_http_phase_handler_t) + sizeof(void *)); // last zero checker indicates ending.
     if (ph == NULL) {
         return NGX_ERROR;
     }
@@ -498,6 +504,20 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
     cmcf->phase_engine.handlers = ph;
     n = 0;
 
+    // Every phase has one checker function, which runs provided ngx_http_handler_pt functions of its phases.
+    // The phase checker may check ngx_http_handler_pt's return code to determine whether jump to next phase or continue next handler on the same phase.
+    //    <phase name>                            <checker name>                        <checker behavior>
+    // NGX_HTTP_POST_READ_PHASE             ngx_http_core_generic_phase
+    // NGX_HTTP_SERVER_REWRITE_PHASE        ngx_http_core_rewrite_phase
+    // NGX_HTTP_FIND_CONFIG_PHASE           ngx_http_core_find_config_phase             no handler injected
+    // NGX_HTTP_REWRITE_PHASE               ngx_http_core_rewrite_phase
+    // NGX_HTTP_POST_REWRITE_PHASE          ngx_http_core_post_rewrite_phase
+    // NGX_HTTP_PREACCESS_PHASE             ngx_http_core_generic_phase
+    // NGX_HTTP_ACCESS_PHASE                ngx_http_core_access_phase
+    // NGX_HTTP_POST_ACCESS_PHASE           ngx_http_core_post_access_phase
+    // NGX_HTTP_PRECONTENT_PHASE            ngx_http_core_generic_phase
+    // NGX_HTTP_CONTENT_PHASE               ngx_http_core_content_phase
+    // NGX_HTTP_LOG_PHASE                   ngx_http_core_generic_phase
     for (i = 0; i < NGX_HTTP_LOG_PHASE; i++) {
         h = cmcf->phases[i].handlers.elts;
 
@@ -512,7 +532,10 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
             break;
 
         case NGX_HTTP_FIND_CONFIG_PHASE:
-            find_config_index = n;
+            // No additional handlers injected at this phase.
+            // Its obviously no need to set ->handler and ->next.
+
+            find_config_index = n; // save this index because of NGX_HTTP_POST_REWRITE_PHASE phase my jump back.
 
             ph->checker = ngx_http_core_find_config_phase;
             n++;
@@ -531,7 +554,7 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
         case NGX_HTTP_POST_REWRITE_PHASE:
             if (use_rewrite) {
                 ph->checker = ngx_http_core_post_rewrite_phase;
-                ph->next = find_config_index;
+                ph->next = find_config_index; // Jump back to find config. Loops until no more rewrite.
                 n++;
                 ph++;
             }
@@ -546,7 +569,7 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
         case NGX_HTTP_POST_ACCESS_PHASE:
             if (use_access) {
                 ph->checker = ngx_http_core_post_access_phase;
-                ph->next = n;
+                ph->next = n; // Why ?
                 ph++;
             }
 
@@ -565,7 +588,7 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
         for (j = cmcf->phases[i].handlers.nelts - 1; j >= 0; j--) {
             ph->checker = checker;
             ph->handler = h[j];
-            ph->next = n;
+            ph->next = n; // First handler of next phase.
             ph++;
         }
     }
@@ -595,6 +618,9 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
 
         ctx->srv_conf = cscfp[s]->ctx->srv_conf;
 
+        // For one particular NGX_HTTP_MODULE module, there exists one central srv_conf located in cf->ctx.srv_conf,
+        // there exists alse one in each server{} directive.
+        // So we merge the ones in server{} directive into the central one.
         if (module->merge_srv_conf) {
             rv = module->merge_srv_conf(cf, saved.srv_conf[ctx_index],
                                         cscfp[s]->ctx->srv_conf[ctx_index]);
@@ -607,6 +633,7 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
 
             /* merge the server{}'s loc_conf */
 
+            // Merge loc_conf in several server{} level into a central one.
             ctx->loc_conf = cscfp[s]->ctx->loc_conf;
 
             rv = module->merge_loc_conf(cf, saved.loc_conf[ctx_index],
@@ -617,6 +644,7 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
 
             /* merge the locations{}' loc_conf's */
 
+            // Merge all loc_conf into ngx_http_core_module.
             clcf = cscfp[s]->ctx->loc_conf[ngx_http_core_module.ctx_index];
 
             rv = ngx_http_merge_locations(cf, clcf->locations,
