@@ -2099,10 +2099,16 @@ ngx_http_process_request(ngx_http_request_t *r)
     r->stat_writing = 1;
 #endif
 
+    // Reading of request-line and request-headers is done now.
+    // Stop reading more request-body, let the request pass through 11 phases.
+    // Content phase handler could decide to read request-body or not.
+    // ngx_event_t's handler on the connection switchs to ngx_http_request_handler,
+    // which calls r->read_event_handler or r->write_event_handler.
     c->read->handler = ngx_http_request_handler;
     c->write->handler = ngx_http_request_handler;
     r->read_event_handler = ngx_http_block_reading;
 
+    // Decide which phase to start from, and set ngx_http_core_run_phases to r->write_event_handler.
     ngx_http_handler(r);
 }
 
@@ -2393,6 +2399,7 @@ ngx_http_request_handler(ngx_event_t *ev)
         ev->timedout = 0;
     }
 
+    // Process write event before read event
     if (ev->write) {
         r->write_event_handler(r);
 
@@ -2473,6 +2480,8 @@ ngx_http_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
                    "http finalize request: %i, \"%V?%V\" a:%d, c:%d",
                    rc, &r->uri, &r->args, r == c->data, r->main->count);
 
+    // Fast finalization will destroy request if its refcnt reachs 0.
+    // the connection may be resued.
     if (rc == NGX_DONE) {
         ngx_http_finalize_connection(r);
         return;
@@ -2493,6 +2502,7 @@ ngx_http_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
         rc = r->post_subrequest->handler(r, r->post_subrequest->data, rc);
     }
 
+    // Error termination will close the connection
     if (rc == NGX_ERROR
         || rc == NGX_HTTP_REQUEST_TIME_OUT
         || rc == NGX_HTTP_CLIENT_CLOSED_REQUEST
@@ -2506,6 +2516,7 @@ ngx_http_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
         return;
     }
 
+    // Special response code
     if (rc >= NGX_HTTP_SPECIAL_RESPONSE
         || rc == NGX_HTTP_CREATED
         || rc == NGX_HTTP_NO_CONTENT)
